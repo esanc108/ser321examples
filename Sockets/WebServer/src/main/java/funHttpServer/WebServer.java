@@ -25,6 +25,8 @@ import java.util.Random;
 import java.util.Map;
 import java.util.LinkedHashMap;
 import java.nio.charset.Charset;
+import org.json.*;
+
 
 class WebServer {
   public static void main(String args[]) {
@@ -197,16 +199,18 @@ class WebServer {
           // This multiplies two numbers, there is NO error handling, so when
           // wrong data is given this just crashes
 
-          Map<String, String> query_pairs = new LinkedHashMap<String, String>();
-          // extract path parameters
-          query_pairs = splitQuery(request.replace("multiply?", ""));
+          try {
+            Map<String, String> query_pairs = splitQuery(request.replace("multiply?", ""));
 
-          // extract required fields from parameters
-          Integer num1 = Integer.parseInt(query_pairs.get("num1"));
-          Integer num2 = Integer.parseInt(query_pairs.get("num2"));
+            // Check if both num1 and num2 parameters exist
+            if (query_pairs.containsKey("num1") && query_pairs.containsKey("num2")) {
+              try {
+                // Parse num1 and num2 values
+                Integer num1 = Integer.parseInt(query_pairs.get("num1"));
+                Integer num2 = Integer.parseInt(query_pairs.get("num2"));
 
-          // do math
-          Integer result = num1 * num2;
+                // Perform multiplication
+                Integer result = num1 * num2;
 
           // Generate response
           builder.append("HTTP/1.1 200 OK\n");
@@ -216,29 +220,232 @@ class WebServer {
 
           // TODO: Include error handling here with a correct error code and
           // a response that makes sense
-
-        } else if (request.contains("github?")) {
-          // pulls the query from the request and runs it with GitHub's REST API
-          // check out https://docs.github.com/rest/reference/
-          //
-          // HINT: REST is organized by nesting topics. Figure out the biggest one first,
-          //     then drill down to what you care about
-          // "Owner's repo is named RepoName. Example: find RepoName's contributors" translates to
-          //     "/repos/OWNERNAME/REPONAME/contributors"
-
-          Map<String, String> query_pairs = new LinkedHashMap<String, String>();
-          query_pairs = splitQuery(request.replace("github?", ""));
-          String json = fetchURL("https://api.github.com/" + query_pairs.get("query"));
-          System.out.println(json);
-
-          builder.append("HTTP/1.1 200 OK\n");
-          builder.append("Content-Type: text/html; charset=utf-8\n");
+        } catch (NumberFormatException e) {
+          // Handle invalid integer input
+          builder.append("HTTP/1.1 400 Bad Request\n");
+          builder.append("Content-Type: text/plain; charset=utf-8\n");
           builder.append("\n");
-          builder.append("Check the todos mentioned in the Java source file");
-          // TODO: Parse the JSON returned by your fetch and create an appropriate
-          // response based on what the assignment document asks for
+          builder.append("Error: Invalid input. Please provide valid integers for num1 and num2.");
+        }
+      } else {
+        // Handle missing parameters
+        builder.append("HTTP/1.1 400 Bad Request\n");
+        builder.append("Content-Type: text/plain; charset=utf-8\n");
+        builder.append("\n");
+        builder.append("Error: Both num1 and num2 parameters are required.");
+      }
+    } catch (Exception e) {
+      // Handle any other exception that may occur
+      builder.append("HTTP/1.1 400 Bad Request\n");
+      builder.append("Content-Type: text/plain; charset=utf-8\n");
+      builder.append("\n");
+      builder.append("Error: Invalid query format. Please provide valid parameters for multiplication.\n");
+      builder.append("Example query: /multiply?num1=<num1>&num2=<num2>");
+    }
+  }
 
-        } else {
+         else if (request.contains("github?")) {
+
+          try {
+            Map<String, String> query_pairs = splitQuery(request.replace("github?", ""));
+            String jsonResponse = fetchURL("https://api.github.com/" + query_pairs.get("query"));
+
+            // Check if JSON response is empty or null
+            if (jsonResponse == null || jsonResponse.isEmpty()) {
+              // Respond with appropriate error message and status code
+              builder.append("HTTP/1.1 404 Not Found\n");
+              builder.append("Content-Type: text/plain; charset=utf-8\n");
+              builder.append("\n");
+              builder.append("Error: No data found for the given query.");
+            } else {
+              try {
+                // Parse the JSON response
+                JSONArray jsonArray = new JSONArray(jsonResponse);
+
+                // Build response
+                builder.append("HTTP/1.1 200 OK\n");
+                builder.append("Content-Type: text/html; charset=utf-8\n");
+                builder.append("\n");
+                builder.append("<html><head><title>GitHub Repositories</title></head><body><ul>");
+
+                // Iterate through each repository in the JSON array
+                for (int i = 0; i < jsonArray.length(); i++) {
+                  JSONObject repo = jsonArray.getJSONObject(i);
+                  String fullName = repo.getString("full_name");
+                  int id = repo.getInt("id");
+                  JSONObject owner = repo.getJSONObject("owner");
+                  String ownerLogin = owner.getString("login");
+
+                  // Append repository information to the response
+                  builder.append("<li>Full Name: ").append(fullName).append("</li>");
+                  builder.append("<li>ID: ").append(String.valueOf(id)).append("</li>");
+                  builder.append("<li>Owner's Login: ").append(ownerLogin).append("</li><br>");
+                }
+
+                builder.append("</ul></body></html>");
+              } catch (JSONException e) {
+                // Handle JSON parsing error
+                builder.append("HTTP/1.1 500 Internal Server Error\n");
+                builder.append("Content-Type: text/plain; charset=utf-8\n");
+                builder.append("\n");
+                builder.append("Error: Failed to parse GitHub API response.");
+              }
+            }
+          } catch (Exception e) {
+            // Handle any other exception that may occur
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/plain; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error: Invalid query format. Please provide a valid query parameter for GitHub API.");
+          }
+        }
+
+        else if (request.contains("temperature?")) {
+          // Temperature conversion request
+
+          try {
+            Map<String, String> query_pairs = splitQuery(request.replace("temperature?", ""));
+
+            // Check if all required parameters exist
+            if (query_pairs.containsKey("value") && query_pairs.containsKey("from") && query_pairs.containsKey("to")) {
+              String valueString = query_pairs.get("value");
+              String fromUnit = query_pairs.get("from").toUpperCase();
+              String toUnit = query_pairs.get("to").toUpperCase();
+
+              // Check if value is a valid number
+              double value;
+              try {
+                value = Double.parseDouble(valueString);
+              } catch (NumberFormatException e) {
+                // Handle invalid value
+                builder.append("HTTP/1.1 400 Bad Request\n");
+                builder.append("Content-Type: text/plain; charset=utf-8\n");
+                builder.append("\n");
+                builder.append("Error: Invalid input value. Please provide a valid number for temperature.");
+                response = builder.toString().getBytes();
+                return response;
+              }
+
+              // Check if from and to units are valid
+              if (!(Arrays.asList("C", "K", "F").contains(fromUnit) && Arrays.asList("C", "K", "F").contains(toUnit))) {
+                // Handle invalid units
+                builder.append("HTTP/1.1 400 Bad Request\n");
+                builder.append("Content-Type: text/plain; charset=utf-8\n");
+                builder.append("\n");
+                builder.append("Error: Invalid units. Please use 'C', 'F', or 'K' for temperature units.");
+                response = builder.toString().getBytes();
+                return response;
+              }
+
+              double result = value;
+
+              // Convert temperature
+              if (fromUnit.equals("C")) {
+                // Conversion logic for Celsius
+                if (toUnit.equals("F")) {
+                  result = (value * 9 / 5) + 32;
+                } else if (toUnit.equals("K")) {
+                  result = value + 273.15;
+                }
+              } else if (fromUnit.equals("F")) {
+                // Conversion logic for Fahrenheit
+                if (toUnit.equals("C")) {
+                  result = (value - 32) * 5 / 9;
+                } else if (toUnit.equals("K")) {
+                  result = (value + 459.67) * 5 / 9;
+                }
+              } else if (fromUnit.equals("K")) {
+                // Conversion logic for Kelvin
+                if (toUnit.equals("C")) {
+                  result = value - 273.15;
+                } else if (toUnit.equals("F")) {
+                  result = (value * 9 / 5) - 459.67;
+                }
+              }
+
+              // Generate response
+              builder.append("HTTP/1.1 200 OK\n");
+              builder.append("Content-Type: text/html; charset=utf-8\n");
+              builder.append("\n");
+              builder.append("Result is: ").append(result).append(" ").append(toUnit);
+            } else {
+              // Handle missing parameters
+              builder.append("HTTP/1.1 400 Bad Request\n");
+              builder.append("Content-Type: text/plain; charset=utf-8\n");
+              builder.append("\n");
+              builder.append("Error: All parameters (value, from, to) are required for temperature conversion.");
+            }
+          } catch (Exception e) {
+            // Handle any other exception that may occur
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/plain; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error: Invalid query format. Please use the following format for temperature conversion: /temperature?value=<value>&from=<unit>&to=<unit>");
+          }
+        }
+        else if (request.contains("roll?")) {
+          // Dice roll request
+
+          try {
+            Map<String, String> query_pairs = splitQuery(request.replace("roll?", ""));
+
+            // Check if both parameters exist
+            if (query_pairs.containsKey("sides") && query_pairs.containsKey("numDice")) {
+              try {
+                // Parse parameters
+                int sides = Integer.parseInt(query_pairs.get("sides"));
+                int numDice = Integer.parseInt(query_pairs.get("numDice"));
+
+                // Check if sides and numDice are positive integers
+                if (sides <= 0 || numDice <= 0) {
+                  // Handle invalid input
+                  builder.append("HTTP/1.1 400 Bad Request\n");
+                  builder.append("Content-Type: text/plain; charset=utf-8\n");
+                  builder.append("\n");
+                  builder.append("Error: Sides and numDice must be positive integers.");
+                  response = builder.toString().getBytes();
+                  return response;
+                }
+
+                // Roll dice and calculate sum
+                int sum = 0;
+                StringBuilder rolls = new StringBuilder();
+                Random random = new Random();
+                for (int i = 0; i < numDice; i++) {
+                  int roll = random.nextInt(sides) + 1;
+                  sum += roll;
+                  rolls.append("Dice ").append(i + 1).append(": ").append(roll).append("\n");
+                }
+
+                // Generate response
+                builder.append("HTTP/1.1 200 OK\n");
+                builder.append("Content-Type: text/plain; charset=utf-8\n");
+                builder.append("\n");
+                builder.append("Rolls:\n").append(rolls.toString()).append("\nTotal Sum: ").append(sum);
+              } catch (NumberFormatException e) {
+                // Handle invalid input format
+                builder.append("HTTP/1.1 400 Bad Request\n");
+                builder.append("Content-Type: text/plain; charset=utf-8\n");
+                builder.append("\n");
+                builder.append("Error: Invalid input format. Please provide valid integers for sides and numDice.");
+              }
+            } else {
+              // Handle missing parameters
+              builder.append("HTTP/1.1 400 Bad Request\n");
+              builder.append("Content-Type: text/plain; charset=utf-8\n");
+              builder.append("\n");
+              builder.append("Error: Both sides and numDice parameters are required for dice roll.");
+            }
+          } catch (Exception e) {
+            // Handle any other exception that may occur
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/plain; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error: Invalid query format. Please use the following format for dice roll: /roll?sides=<sides>&numDice=<numDice>");
+          }
+        }
+
+        else {
           // if the request is not recognized at all
 
           builder.append("HTTP/1.1 400 Bad Request\n");

@@ -1,8 +1,17 @@
+
+
+
 // set as java application
 apply plugin: 'application'
 
 //define main class
 mainClassName = 'SimpleServer'
+repositories {
+  mavenCentral()
+}
+dependencies{
+  implementation 'org.json:json:20171018' // org.json
+}
 
 task SimpleWebServer(type: JavaExec) {
   group 'http'
